@@ -244,7 +244,7 @@ Explique-le en français très simple : phrases courtes, tutoiement, aucun jargo
 Nous sommes le ${today}. Une date sans année est la prochaine occurrence de cette date.
 N'invente rien. Si une date, une heure ou un montant n'est pas écrit, ne l'ajoute pas. Si une partie est illisible, dis-le dans "doute".
 Réponds UNIQUEMENT avec ce JSON, sans texte autour :
-{"expediteur":"qui écrit, court","reference":"numéro de dossier ou référence écrit sur la lettre, ou vide","titre":"de quoi il s'agit, 7 mots max","resume":"2 ou 3 phrases simples","urgence":"haute|moyenne|basse","echeances":[{"date":"AAAA-MM-JJ","heure":"HH:MM ou vide","quoi":"court","genre":"rdv|echeance","lieu":"adresse courte ou vide"}],"a_faire":["étapes concrètes, max 5"],"documents":["à préparer"],"montant":"ou vide","si_rien":"une phrase","aide":["qui peut aider gratuitement"],"doute":"ou vide"}`;
+{"expediteur":"qui écrit, court","reference":"numéro de dossier ou référence écrit sur la lettre, ou vide","emails":["adresses e-mail écrites sur la lettre, exactement"],"telephones":["numéros de téléphone écrits sur la lettre"],"titre":"de quoi il s'agit, 7 mots max","resume":"2 ou 3 phrases simples","urgence":"haute|moyenne|basse","echeances":[{"date":"AAAA-MM-JJ","heure":"HH:MM ou vide","quoi":"court","genre":"rdv|echeance","lieu":"adresse courte ou vide"}],"a_faire":["étapes concrètes, max 5"],"documents":["à préparer"],"montant":"ou vide","si_rien":"une phrase","aide":["qui peut aider gratuitement"],"doute":"ou vide"}`;
 
   const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
 
@@ -290,6 +290,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
         <span class="pill u-${u}">${uLabel}</span></div>
       <p class="summary">${esc(r.resume || "")}</p>
       ${r.montant ? `<p><b>Montant :</b> ${esc(r.montant)}</p>` : ""}
+      ${(r.emails?.length || r.telephones?.length) ? `<div class="block"><h3>Pour les contacter</h3><div class="contacts">
+        ${(r.emails || []).map(m => `<div class="contact"><span>📧 <a href="mailto:${esc(m)}">${esc(m)}</a></span><button class="small" type="button" data-copy="${esc(m)}">Copier</button></div>`).join("")}
+        ${(r.telephones || []).map(t => `<div class="contact"><span>📞 <a href="tel:${esc(t.replace(/\s/g, ""))}">${esc(t)}</a></span><button class="small" type="button" data-copy="${esc(t)}">Copier</button></div>`).join("")}
+        </div><p class="note">Trouvé sur la lettre. Vérifie que c'est bien écrit pareil sur le papier.</p></div>` : ""}
       ${dates.length ? `<div class="block"><h3>Les dates</h3><div class="dates">${dates.map((d, i) => {
         const dt = parseISO(d.date);
         return `<div class="date"><div class="d"><b>${dt.getDate()}</b><span>${MON3[dt.getMonth()]}</span></div>
@@ -319,6 +323,9 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       if (btn) btn.outerHTML = `<span class="added">Ajouté ✓</span>`;
     }
     current = { r, opts, letterId: opts.letterId || null };
+    el.querySelectorAll("[data-copy]").forEach(b => b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copié ✓"; } catch { flash(b.dataset.copy); }
+    });
     $("#replyBtn").onclick = () => openComposer();
     const kb = $("#keepBtn");
     if (kb) kb.onclick = () => { keepLetter(); kb.outerHTML = `<span class="added">Dans Mes lettres ✓</span>`; flash("Gardée dans Mes lettres."); };
@@ -441,7 +448,9 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     $("#rCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#rText").value); flash("Lettre copiée. Colle-la dans un e-mail ou un document."); } catch { $("#rText").select(); flash("Sélectionne le texte et copie-le."); } };
     $("#rMail").onclick = () => {
       const body = $("#rText").value, subj = (body.match(/^Concerne : (.*)$/m) || [])[1] || "Votre courrier";
-      location.href = "mailto:?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
+      const to = ($("#fMail")?.value || "").trim();
+      if (!to) flash("Aucune adresse e-mail : écris-la dans « Leur e-mail », ou ajoute-la dans ton application d'e-mail.");
+      location.href = "mailto:" + encodeURIComponent(to).replace("%40", "@") + "?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
     };
     $("#rSent").onclick = () => {
       const id = current.letterId || keepLetter();
@@ -460,7 +469,8 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     const f = (id, label, html) => `<label class="lbl">${label}${html.replace("<X", `<input id="${id}"`)}</label>`;
     const common = f("fDest", "À qui", `<X value="${esc(cap((r.expediteur || "").replace(/^(Ta|Ton|Le|La|Un|Une) |^L'/, "")))}">`) +
       f("fRef", "Référence ou n° de dossier", `<X value="${esc(r.reference || "")}" placeholder="écrite sur la lettre">`) +
-      f("fRecu", "Date de leur lettre (facultatif)", `<X type="date">`);
+      f("fRecu", "Date de leur lettre (facultatif)", `<X type="date">`) +
+      f("fMail", "Leur e-mail (pour envoyer par e-mail)", `<X type="email" value="${esc(r.emails?.[0] || "")}" placeholder="trouvé sur la lettre, ou à écrire">`);
     const docs = (r.documents || []).join("\n");
     const extra = {
       rdv_ok: f("fDate", "Date du rendez-vous", `<X type="date" value="${rdv?.date || ""}">`) + f("fHeure", "Heure", `<X type="time" value="${rdv?.heure || ""}">`),
@@ -570,7 +580,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     if (current.letterId) return current.letterId;
     const r = current.r;
     const L = { id: newId(), recu: iso(TODAY), statut: "a_faire", reponses: [],
-      r: { expediteur: r.expediteur, reference: r.reference || "", titre: r.titre, resume: r.resume, urgence: r.urgence, echeances: r.echeances || [], a_faire: r.a_faire || [], documents: r.documents || [], montant: r.montant || "", si_rien: r.si_rien || "", aide: r.aide || [] } };
+      r: { expediteur: r.expediteur, reference: r.reference || "", emails: r.emails || [], telephones: r.telephones || [], titre: r.titre, resume: r.resume, urgence: r.urgence, echeances: r.echeances || [], a_faire: r.a_faire || [], documents: r.documents || [], montant: r.montant || "", si_rien: r.si_rien || "", aide: r.aide || [] } };
     letters.unshift(L); current.letterId = L.id; saveLetters();
     return L.id;
   }

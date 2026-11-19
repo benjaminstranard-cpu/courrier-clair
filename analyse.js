@@ -178,8 +178,16 @@
     const refM = text.match(/(?:n[°o]\.?\s*(?:de\s+)?dossier|notre\s+r[ée]f(?:[ée]rence)?|r[ée]f[ée]rence|r[ée]f\.)\s*:?\s*([A-Z0-9][A-Z0-9\/\-.]{2,24})/i);
     const reference = refM ? refM[1].replace(/[.\-\/]+$/, "") : "";
 
+    /* Adresses e-mail et numéros de téléphone écrits sur la lettre. La lecture des photos ajoute parfois des espaces autour du @. */
+    const emails = [...new Set([...text.matchAll(/[A-Za-z0-9._%+-]+\s?@\s?[A-Za-z0-9-]+(?:\s?\.\s?[A-Za-z0-9-]+)*\s?\.\s?[A-Za-z]{2,}/g)]
+      .map(m => m[0].replace(/\s/g, "").toLowerCase().replace(/[.,;]+$/, "")))].slice(0, 4);
+    const telephones = [...new Set([...text.matchAll(/(?:\+32\s?(?:\(0\)\s?)?|(?<![\dA-Z])0)\d(?:[\s./-]?\d){7,8}(?![\d])/g)]
+      .map(m => m[0].replace(/[^\d+]/g, "").replace(/^\+320?/, "0"))
+      .filter(n => /^0\d{8,9}$/.test(n))
+      .map(n => n.length === 10 ? n.replace(/(\d{4})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4") : /^0[2-9]\d{7}$/.test(n) && /^0[2349]/.test(n) ? n.replace(/(\d{2})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4") : n.replace(/(\d{3})(\d{2})(\d{2})(\d{2})/, "$1 $2 $3 $4")))].slice(0, 3);
+
     return {
-      reference,
+      reference, emails, telephones,
       expediteur, titre: genre.titre, resume: genre.resume, urgence, echeances,
       a_faire: genre.a_faire, documents: genre.documents || [], montant,
       si_rien: genre.si_rien, aide: genre.aide, doute

@@ -174,3 +174,7 @@ textarea.letter{min-height:340px;font:15px/1.5 var(--f-body);white-space:pre-wra
 .confetti i{position:absolute;top:-20px;animation:fall linear forwards}
 @keyframes fall{to{transform:translate(var(--x),105vh) rotate(var(--r))}}
 @media (max-width:860px){.tabs button{font-size:14px;padding:11px 6px}}
+/* Contacts trouvés sur la lettre */
+.contacts{display:flex;flex-direction:column;gap:6px}
+.contact{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;flex-wrap:wrap}
+.contact span{overflow-wrap:anywhere;font-weight:700}
