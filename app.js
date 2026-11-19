@@ -720,6 +720,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     $("#lettersHead").innerHTML = total ? `
       <div class="score"><div class="ring" style="--p:${pct}"><b>${n.regle}</b><small>réglée${n.regle > 1 ? "s" : ""}</small></div>
       <p>${n.regle ? `<b>${n.regle} lettre${n.regle > 1 ? "s" : ""} réglée${n.regle > 1 ? "s" : ""}</b>. ` : ""}${n.a_faire ? `${n.a_faire} à faire. ` : ""}${n.repondu ? `${n.repondu} en attente de réponse.` : ""}${!n.a_faire && !n.repondu ? "Tout est en ordre. 🌿" : ""}</p></div>` : "";
+    renderCarnet();
     if (!total) { box.innerHTML = `<p class="empty">Aucune lettre gardée. Après avoir scanné une lettre, appuie sur « 📁 Garder dans Mes lettres » pour suivre ce qu'il reste à faire.</p>`; return; }
     const order = { a_faire: 0, repondu: 1, regle: 2 };
     box.innerHTML = [...letters].sort((a, b) => order[a.statut] - order[b.statut] || b.recu.localeCompare(a.recu)).map(l => {
@@ -738,6 +739,30 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
         </div></div>`;
     }).join("");
   }
+  /* Tous les e-mails (et téléphones) trouvés dans les lettres gardées, regroupés par organisme. */
+  function renderCarnet() {
+    const box = $("#carnet"); if (!box) return;
+    const groups = new Map();
+    for (const l of letters) {
+      const who = l.r.expediteur || "Autre";
+      const g = groups.get(who) || { emails: new Set(), tels: new Set(), n: 0 };
+      (l.r.emails || []).forEach(m => g.emails.add(m)); (l.r.telephones || []).forEach(t => g.tels.add(t)); g.n++;
+      groups.set(who, g);
+    }
+    const all = [...new Set([...groups.values()].flatMap(g => [...g.emails]))];
+    const withData = [...groups].filter(([, g]) => g.emails.size || g.tels.size);
+    box.hidden = !withData.length;
+    if (!withData.length) return;
+    $("#carnetTitle").textContent = `📧 Tous les e-mails (${all.length})`;
+    $("#carnetList").innerHTML = withData.map(([who, g]) => `<div class="cgroup"><p><b>${esc(who)}</b> <small class="when">· ${g.n} lettre${g.n > 1 ? "s" : ""}</small></p>
+        ${[...g.emails].map(m => `<div class="contact"><span>📧 <a href="mailto:${esc(m)}">${esc(m)}</a></span><button class="small" type="button" data-copy="${esc(m)}">Copier</button></div>`).join("")}
+        ${[...g.tels].map(t => `<div class="contact"><span>📞 <a href="tel:${esc(t.replace(/\s/g, ""))}">${esc(t)}</a></span><button class="small" type="button" data-copy="${esc(t)}">Copier</button></div>`).join("")}
+      </div>`).join("") + (all.length > 1 ? `<div class="row"><button class="small" type="button" data-copy="${esc(all.join(", "))}">📋 Copier tous les e-mails</button></div>` : "");
+  }
+  document.addEventListener("click", async ev => {
+    const b = ev.target.closest("#carnet [data-copy]"); if (!b) return;
+    try { await navigator.clipboard.writeText(b.dataset.copy); const t = b.textContent; b.textContent = "Copié ✓"; setTimeout(() => { if (b.isConnected) b.textContent = t; }, 1500); } catch { flash(b.dataset.copy); }
+  });
   function reopen(id, reply) {
     const L = letters.find(x => x.id === id); if (!L) return;
     tab("letter");

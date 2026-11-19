@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <div class="wrap">
@@ -90,6 +90,7 @@
     <section class="panel lettres-panel" data-pane="lettres" data-off aria-labelledby="hLetters">
       <h2 id="hLetters">📁 Mes lettres</h2>
       <div id="lettersHead"></div>
+      <details class="carnet" id="carnet" hidden><summary id="carnetTitle">📧 Tous les e-mails</summary><div id="carnetList" class="contacts"></div></details>
       <div class="list" id="letters"></div>
       <p class="note">Courrier Clair garde seulement le résumé de chaque lettre, sur cet appareil. Pas la photo, pas le texte complet.</p>
     </section>
@@ -98,7 +99,7 @@
   <p class="foot">Courrier Clair explique, il ne décide pas. L'explication peut se tromper : vérifie toujours auprès de l'organisme qui t'écrit. Aide gratuite : le service social de ta mutuelle, le CPAS de ta commune, ou un service d'aide juridique de première ligne.</p>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
-<script src="analyse.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="analyse.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
