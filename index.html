@@ -28,7 +28,8 @@
 
   <div class="tabs" role="tablist">
     <button role="tab" id="tabLetter" aria-selected="true">Ma lettre</button>
-    <button role="tab" id="tabCal" aria-selected="false">Mon agenda <span id="tabCount"></span></button>
+    <button role="tab" id="tabLetters" aria-selected="false">Mes lettres <span id="lettersCount"></span></button>
+    <button role="tab" id="tabCal" aria-selected="false">Agenda <span id="tabCount"></span></button>
   </div>
 
   <div class="grid">
@@ -84,6 +85,13 @@
         </div>
       </form>
       <p class="note">Ton agenda est gardé sur cet appareil. Chaque date a un lien « Google Agenda » pour l'y copier.</p>
+    </section>
+
+    <section class="panel lettres-panel" data-pane="lettres" data-off aria-labelledby="hLetters">
+      <h2 id="hLetters">📁 Mes lettres</h2>
+      <div id="lettersHead"></div>
+      <div class="list" id="letters"></div>
+      <p class="note">Courrier Clair garde seulement le résumé de chaque lettre, sur cet appareil. Pas la photo, pas le texte complet.</p>
     </section>
   </div>
 

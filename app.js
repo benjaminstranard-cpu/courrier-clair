@@ -166,10 +166,12 @@
   /* ---------- Onglets (téléphone) ---------- */
   function tab(which) {
     $("#tabLetter").setAttribute("aria-selected", which === "letter");
+    $("#tabLetters").setAttribute("aria-selected", which === "lettres");
     $("#tabCal").setAttribute("aria-selected", which === "cal");
     document.querySelectorAll("[data-pane]").forEach(p => p.toggleAttribute("data-off", p.dataset.pane !== which));
   }
   $("#tabLetter").onclick = () => tab("letter");
+  $("#tabLetters").onclick = () => tab("lettres");
   $("#tabCal").onclick = () => tab("cal");
   tab("letter");
 
@@ -226,7 +228,7 @@ Explique-le en français très simple : phrases courtes, tutoiement, aucun jargo
 Nous sommes le ${today}. Une date sans année est la prochaine occurrence de cette date.
 N'invente rien. Si une date, une heure ou un montant n'est pas écrit, ne l'ajoute pas. Si une partie est illisible, dis-le dans "doute".
 Réponds UNIQUEMENT avec ce JSON, sans texte autour :
-{"expediteur":"qui écrit, court","titre":"de quoi il s'agit, 7 mots max","resume":"2 ou 3 phrases simples","urgence":"haute|moyenne|basse","echeances":[{"date":"AAAA-MM-JJ","heure":"HH:MM ou vide","quoi":"court","genre":"rdv|echeance","lieu":"adresse courte ou vide"}],"a_faire":["étapes concrètes, max 5"],"documents":["à préparer"],"montant":"ou vide","si_rien":"une phrase","aide":["qui peut aider gratuitement"],"doute":"ou vide"}`;
+{"expediteur":"qui écrit, court","reference":"numéro de dossier ou référence écrit sur la lettre, ou vide","titre":"de quoi il s'agit, 7 mots max","resume":"2 ou 3 phrases simples","urgence":"haute|moyenne|basse","echeances":[{"date":"AAAA-MM-JJ","heure":"HH:MM ou vide","quoi":"court","genre":"rdv|echeance","lieu":"adresse courte ou vide"}],"a_faire":["étapes concrètes, max 5"],"documents":["à préparer"],"montant":"ou vide","si_rien":"une phrase","aide":["qui peut aider gratuitement"],"doute":"ou vide"}`;
 
   const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
 
@@ -285,6 +287,11 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       ${r.si_rien ? `<p class="warn"><b>Si tu ne fais rien :</b> ${esc(r.si_rien)}</p>` : ""}
       ${r.aide?.length ? `<div class="block"><h3>Qui peut t'aider</h3>${list(r.aide, "ul")}</div>` : ""}
       ${r.doute ? `<p class="note"><b>Pas sûr :</b> ${esc(r.doute)}</p>` : ""}
+      <div class="actions">
+        <button class="primary" id="replyBtn" type="button">✉️ Répondre à cette lettre</button>
+        ${opts.example ? "" : opts.saved ? `<span class="added">Dans Mes lettres ✓</span>` : `<button id="keepBtn" type="button">📁 Garder dans Mes lettres</button>`}
+      </div>
+      <div id="composer"></div>
       ${opts.texte ? `<details><summary>Voir le texte lu sur la photo</summary><p class="textbox">${esc(opts.texte.trim())}</p></details>` : ""}
       <p class="note">Vérifie toujours auprès de l'organisme qui t'a écrit.</p>`;
     const from = r.expediteur || "";
@@ -295,6 +302,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
         addEvent({ title: "Rappel : " + (d.quoi || r.titre), date: addDays(d.date, -3), kind: "rappel", from, note: "Dans 3 jours : " + longDate(d.date) });
       if (btn) btn.outerHTML = `<span class="added">Ajouté ✓</span>`;
     }
+    current = { r, opts, letterId: opts.letterId || null };
+    $("#replyBtn").onclick = () => openComposer();
+    const kb = $("#keepBtn");
+    if (kb) kb.onclick = () => { keepLetter(); kb.outerHTML = `<span class="added">Dans Mes lettres ✓</span>`; flash("Gardée dans Mes lettres."); };
     el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => addOne(+b.dataset.add, b));
     const all = $("#addAll");
     if (all) all.onclick = () => {
@@ -340,6 +351,275 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     }
   };
 
+  /* ---------- Répondre à cette lettre ---------- */
+  let current = null;
+  const ME = "courrier-clair-moi";
+  const dateFr = s => { const d = parseISO(s); return d.getDate() + (d.getDate() === 1 ? "er" : "") + " " + MONTHS[d.getMonth()] + " " + d.getFullYear(); };
+  const REPLIES = {
+    rdv_ok: "Je confirme que je viendrai au rendez-vous",
+    rdv_change: "Je ne peux pas venir : je demande une autre date",
+    docs: "J'envoie les documents demandés",
+    delai: "Je demande plus de temps",
+    explication: "Je ne comprends pas : je demande une explication",
+    desaccord: "Je ne suis pas d'accord avec la décision",
+    plan: "Je demande à payer en plusieurs fois",
+    paye: "J'ai déjà payé"
+  };
+  function suggested(r) {
+    const t = (r.titre || "") + " " + (r.resume || "");
+    if (/convocation|rendez-vous/i.test(t)) return ["rdv_ok", "rdv_change", "explication"];
+    if (/documents?/i.test(t)) return ["docs", "delai", "explication"];
+    if (/d[ée]cision/i.test(t)) return ["desaccord", "explication"];
+    if (/huissier|rappel|paiement|facture|payer/i.test(t)) return ["plan", "paye", "explication"];
+    if (/imp[ôo]ts/i.test(t)) return ["explication", "plan"];
+    return ["explication", "docs", "delai"];
+  }
+  function openComposer(type) {
+    const r = current.r;
+    const sug = suggested(r);
+    type = type || sug[0];
+    const me = lsGet(ME, {});
+    const rdv = (r.echeances || []).find(e => e.genre === "rdv");
+    const ech = (r.echeances || []).find(e => e.genre !== "rdv");
+    const box = $("#composer");
+    const others = Object.keys(REPLIES).filter(k => !sug.includes(k));
+    box.innerHTML = `
+      <div class="composer">
+        <h3>Ta réponse</h3>
+        <label class="lbl">Ce que tu veux dire
+          <select id="rType">${sug.concat(others).map((k, i) => `${i === sug.length ? `<option disabled>──────────</option>` : ""}<option value="${k}" ${k === type ? "selected" : ""}>${REPLIES[k]}</option>`).join("")}</select>
+        </label>
+        <div class="fgrid" id="rFields">${fieldsFor(type, r, rdv, ech)}</div>
+        <details class="me" ${me.nom ? "" : "open"}><summary>Mes coordonnées ${me.nom ? `(${esc(me.nom)})` : "(à remplir une fois)"}</summary>
+          <div class="fgrid">
+            <label class="lbl">Nom et prénom<input id="mNom" value="${esc(me.nom || "")}" autocomplete="name"></label>
+            <label class="lbl">Rue et numéro<input id="mRue" value="${esc(me.rue || "")}" autocomplete="street-address"></label>
+            <label class="lbl">Code postal et commune<input id="mVille" value="${esc(me.ville || "")}" placeholder="5000 Namur"></label>
+            <label class="lbl">Téléphone ou e-mail (facultatif)<input id="mContact" value="${esc(me.contact || "")}"></label>
+            <label class="lbl">Accorder les mots au
+              <select id="mGenre"><option value="n">neutre</option><option value="m" ${me.genre === "m" ? "selected" : ""}>masculin</option><option value="f" ${me.genre === "f" ? "selected" : ""}>féminin</option></select></label>
+          </div>
+          <p class="note">Gardé seulement sur cet appareil, pour tes prochaines réponses.</p>
+        </details>
+        <label class="lbl">La lettre (tu peux la modifier)<textarea id="rText" class="letter" spellcheck="true"></textarea></label>
+        <div class="row">
+          <button class="primary" id="rPrint" type="button">🖨️ Imprimer</button>
+          <button id="rCopy" type="button">📋 Copier</button>
+          <button id="rMail" type="button">📧 E-mail</button>
+          <button id="rSent" type="button">✅ Je l'ai envoyée</button>
+        </div>
+        <p class="tip" id="rTip"></p>
+      </div>`;
+    let edited = false;
+    const fill = () => {
+      const t = $("#rType").value;
+      const me2 = { nom: $("#mNom").value.trim(), rue: $("#mRue").value.trim(), ville: $("#mVille").value.trim(), contact: $("#mContact").value.trim(), genre: $("#mGenre").value };
+      lsSet(ME, me2);
+      if (!edited) $("#rText").value = letterText(t, readFields(), me2, r);
+      $("#rTip").innerHTML = tipFor(t);
+    };
+    $("#rType").onchange = () => { edited = false; $("#rFields").innerHTML = fieldsFor($("#rType").value, r, rdv, ech); fill(); };
+    box.oninput = e => { if (e.target.id === "rText") edited = true; else if (e.target.closest(".fgrid, .me")) { edited = false; fill(); } };
+    box.onchange = e => { if (e.target.id !== "rType" && e.target.closest("#rFields, .me")) { edited = false; fill(); } };
+    $("#rPrint").onclick = () => printLetter($("#rText").value);
+    $("#rCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#rText").value); flash("Lettre copiée. Colle-la dans un e-mail ou un document."); } catch { $("#rText").select(); flash("Sélectionne le texte et copie-le."); } };
+    $("#rMail").onclick = () => {
+      const body = $("#rText").value, subj = (body.match(/^Concerne : (.*)$/m) || [])[1] || "Votre courrier";
+      location.href = "mailto:?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
+    };
+    $("#rSent").onclick = () => {
+      const id = current.letterId || keepLetter();
+      const L = letters.find(x => x.id === id);
+      if (L) { L.reponses = [...(L.reponses || []), { type: $("#rType").value, label: REPLIES[$("#rType").value], date: iso(TODAY) }]; if (L.statut === "a_faire") L.statut = "repondu"; saveLetters(); }
+      $("#rSent").outerHTML = `<span class="added">Notée dans Mes lettres ✓</span>`;
+      flash("Bien joué ! C'est noté dans Mes lettres. Quand tout est réglé, coche « C'est réglé ».");
+      cheer(false);
+    };
+    fill();
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const hFr = h => h.replace(/^0(\d)/, "$1").replace(":", "h");
+  function fieldsFor(t, r, rdv, ech) {
+    const f = (id, label, html) => `<label class="lbl">${label}${html.replace("<X", `<input id="${id}"`)}</label>`;
+    const common = f("fDest", "À qui", `<X value="${esc(cap((r.expediteur || "").replace(/^(Ta|Ton|Le|La|Un|Une) |^L'/, "")))}">`) +
+      f("fRef", "Référence ou n° de dossier", `<X value="${esc(r.reference || "")}" placeholder="écrite sur la lettre">`) +
+      f("fRecu", "Date de leur lettre (facultatif)", `<X type="date">`);
+    const docs = (r.documents || []).join("\n");
+    const extra = {
+      rdv_ok: f("fDate", "Date du rendez-vous", `<X type="date" value="${rdv?.date || ""}">`) + f("fHeure", "Heure", `<X type="time" value="${rdv?.heure || ""}">`),
+      rdv_change: f("fDate", "Date du rendez-vous", `<X type="date" value="${rdv?.date || ""}">`) + f("fHeure", "Heure", `<X type="time" value="${rdv?.heure || ""}">`) +
+        `<label class="lbl">Pourquoi je ne peux pas venir<select id="fMotif"><option value="sante">Mon état de santé (certificat joint)</option><option value="rdv">J'ai un autre rendez-vous médical ce jour-là</option><option value="trajet">Je ne peux pas faire le trajet seul·e ce jour-là</option><option value="autre">Une autre raison (à écrire)</option></select></label>` +
+        f("fAutre", "Autre raison (facultatif)", `<X>`),
+      docs: `<label class="lbl full">Documents que j'envoie (un par ligne)<textarea id="fDocs" rows="3">${esc(docs)}</textarea></label>`,
+      delai: f("fAction", "Ce qu'on me demande de faire", `<X value="${esc(ech?.quoi ? ech.quoi.toLowerCase() : "renvoyer les documents demandés")}">`) +
+        f("fJusqua", "Je demande jusqu'au", `<X type="date" value="${addDays(ech?.date || iso(TODAY), 21)}">`) + f("fRaison", "Pourquoi (facultatif)", `<X value="mon état de santé">`),
+      explication: `<label class="lbl full">Ce que je ne comprends pas (facultatif)<textarea id="fQuestion" rows="3" placeholder="Ex. : pourquoi mon indemnité change, ce que je dois faire exactement…"></textarea></label>`,
+      desaccord: `<label class="lbl full">Pourquoi je ne suis pas d'accord<textarea id="fRaisons" rows="3" placeholder="Ex. : mon état de santé ne s'est pas amélioré, mon psychiatre peut le confirmer."></textarea></label>`,
+      plan: f("fMontant", "Montant total", `<X value="${esc(r.montant || "")}">`) + f("fMois", "Je peux payer par mois", `<X value="" placeholder="ex. 30 €">`) + f("fDebut", "À partir du", `<X type="date" value="${addDays(iso(TODAY), 14)}">`),
+      paye: f("fMontant", "Montant", `<X value="${esc(r.montant || "")}">`) + f("fPaye", "Payé le", `<X type="date">`)
+    }[t] || "";
+    return common + extra;
+  }
+  function readFields() {
+    const v = id => { const e = document.getElementById(id); return e ? e.value.trim() : ""; };
+    return { dest: v("fDest"), ref: v("fRef"), recu: v("fRecu"), date: v("fDate"), heure: v("fHeure"), motif: v("fMotif"), autre: v("fAutre"), docs: v("fDocs"),
+      action: v("fAction"), jusqua: v("fJusqua"), raison: v("fRaison"), question: v("fQuestion"), raisons: v("fRaisons"), montant: v("fMontant"), mois: v("fMois"), debut: v("fDebut"), paye: v("fPaye") };
+  }
+  function letterText(t, f, me, r) {
+    const g = (m, fe) => me.genre === "f" ? fe : me.genre === "m" ? m : m + "·" + fe.slice(m.length);
+    const leur = f.recu ? `votre courrier du ${dateFr(f.recu)}` : "votre courrier";
+    const rdvTxt = (f.date ? `du ${dateFr(f.date)}` : "prévu") + (f.heure ? ` à ${hFr(f.heure)}` : "");
+    const docs = f.docs.split("\n").map(s => s.trim()).filter(Boolean);
+    let objet = "", corps = "", annexes = [];
+    switch (t) {
+      case "rdv_ok":
+        objet = "Confirmation de ma présence au rendez-vous";
+        corps = `J'ai bien reçu ${leur} et je vous confirme ma présence au rendez-vous ${rdvTxt}.`;
+        break;
+      case "rdv_change": {
+        const why = { sante: "en raison de mon état de santé. Vous trouverez ci-joint un certificat médical", rdv: "car j'ai déjà un rendez-vous médical ce jour-là", trajet: "car je ne suis pas en mesure de faire le trajet seul" + g("", "e") + " ce jour-là", autre: f.autre ? "pour la raison suivante : " + f.autre : "pour une raison indépendante de ma volonté" }[f.motif || "sante"];
+        objet = "Demande de report du rendez-vous";
+        corps = `J'ai bien reçu ${leur} me convoquant au rendez-vous ${rdvTxt}.\n\nMalheureusement, je ne pourrai pas m'y présenter ${why}.\n\nJe tiens à être présent${g("", "e")} et je vous demande de bien vouloir me proposer une nouvelle date.${me.contact ? ` Vous pouvez me joindre au ${me.contact}.` : ""}`;
+        if (f.motif === "sante") annexes = ["Certificat médical"];
+        break;
+      }
+      case "docs":
+        objet = "Envoi des documents demandés";
+        corps = `Suite à ${leur}, je vous prie de trouver ci-joint les documents demandés${docs.length ? " :\n" + docs.map(d => "- " + d).join("\n") : "."}\n\nJe vous remercie de bien vouloir me faire savoir si d'autres éléments sont nécessaires.`;
+        annexes = docs;
+        break;
+      case "delai":
+        objet = "Demande de délai supplémentaire";
+        corps = `Suite à ${leur}, je vous informe que je ne suis pas en mesure de ${f.action || "répondre"} dans le délai demandé${f.raison ? ", en raison de " + f.raison : ""}.\n\nJe vous demande donc de bien vouloir m'accorder un délai supplémentaire${f.jusqua ? " jusqu'au " + dateFr(f.jusqua) : ""}.`;
+        break;
+      case "explication":
+        objet = "Demande d'explication";
+        corps = `J'ai bien reçu ${leur}, mais je ne suis pas certain${g("", "e")} d'en comprendre tout le contenu.${f.question ? "\n\nPlus précisément : " + f.question : ""}\n\nPourriez-vous m'expliquer, avec des mots simples, ce que cette lettre signifie pour moi et ce que je dois faire ?${me.contact ? ` Vous pouvez aussi me joindre au ${me.contact}.` : ""}`;
+        break;
+      case "desaccord":
+        objet = "Contestation de votre décision – demande de réexamen";
+        corps = `J'ai bien reçu ${leur} m'informant de votre décision. Je ne suis pas d'accord avec cette décision${f.raisons ? " pour les raisons suivantes :\n\n" + f.raisons : "."}\n\nJe vous demande de bien vouloir réexaminer mon dossier. Je peux vous transmettre tout document médical utile.\n\nJe vous informe également que je me réserve le droit d'introduire un recours dans le délai légal.`;
+        break;
+      case "plan":
+        objet = "Demande de plan de paiement";
+        corps = `J'ai bien reçu ${leur}${f.montant ? ` concernant un montant de ${f.montant}` : ""}.\n\nMa situation financière actuelle ne me permet pas de payer cette somme en une seule fois. Je vous propose de la régler par paiements mensuels${f.mois ? " de " + f.mois : ""}${f.debut ? ", à partir du " + dateFr(f.debut) : ""}.\n\nJe vous remercie de bien vouloir me confirmer votre accord.`;
+        break;
+      case "paye":
+        objet = "Montant déjà payé";
+        corps = `J'ai bien reçu ${leur}${f.montant ? ` concernant un montant de ${f.montant}` : ""}.\n\nJe vous informe que ce montant a déjà été payé${f.paye ? " le " + dateFr(f.paye) : ""}. Vous trouverez ci-joint la preuve de paiement.\n\nJe vous remercie de bien vouloir vérifier et mettre mon dossier à jour.`;
+        annexes = ["Preuve de paiement"];
+        break;
+    }
+    const lieu = (me.ville || "").replace(/^\d{4}\s*/, "");
+    return [
+      me.nom || "[Ton nom et prénom]", me.rue || "[Ta rue et numéro]", me.ville || "[Code postal et commune]", me.contact || null, "",
+      f.dest || "[À qui tu écris]", "",
+      `${lieu || "[Commune]"}, le ${dateFr(iso(TODAY))}`, "",
+      "Concerne : " + objet, f.ref ? "Référence : " + f.ref : null, "",
+      "Madame, Monsieur,", "",
+      corps, "",
+      "Je vous remercie pour votre compréhension et reste à votre disposition pour toute information.", "",
+      "Veuillez agréer, Madame, Monsieur, l'expression de mes salutations distinguées.", "", "",
+      me.nom || "[Ton nom]", "(signature)",
+      annexes.length ? "\nAnnexes :\n" + annexes.map(a => "- " + a).join("\n") : null
+    ].filter(x => x !== null).join("\n");
+  }
+  function tipFor(t) {
+    const base = "Garde toujours une copie ou une photo de ta lettre, et de ce que tu envoies.";
+    return {
+      rdv_change: "📞 Préviens aussi <b>par téléphone</b>, et envoie cette lettre <b>avant</b> le rendez-vous. Avec une raison de santé, joins un certificat médical. " + base,
+      delai: "Envoie cette demande <b>avant</b> la date limite, par e-mail ou en recommandé. " + base,
+      desaccord: "⚠️ Cette lettre demande de <b>réexaminer</b> ton dossier, mais elle <b>ne remplace pas un recours officiel</b>. La façon de contester et le délai (souvent <b>3 mois</b>, devant le tribunal du travail pour la mutuelle, l'INAMI, l'ONEM ou le CPAS) sont écrits dans ta lettre. Demande vite de l'aide gratuite : service social de ta mutuelle, ton syndicat ou un bureau d'aide juridique. " + base,
+      plan: "Propose un montant que tu peux vraiment payer chaque mois. Le CPAS peut t'aider gratuitement (médiation de dettes). " + base,
+      docs: "Envoie des <b>copies</b>, jamais les originaux. " + base
+    }[t] || base;
+  }
+  function printLetter(text) {
+    let area = $("#printArea");
+    if (!area) { area = document.createElement("div"); area.id = "printArea"; document.body.append(area); }
+    area.textContent = text;
+    document.documentElement.classList.add("print-letter");
+    const done = () => { document.documentElement.classList.remove("print-letter"); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    window.print();
+    setTimeout(done, 1500);
+  }
+
+  /* ---------- Mes lettres : le suivi, et une petite fête quand c'est réglé ---------- */
+  const LL = "courrier-clair-lettres";
+  let letters = lsGet(LL, []);
+  function saveLetters() { lsSet(LL, letters); renderLetters(); }
+  function keepLetter() {
+    if (current.letterId) return current.letterId;
+    const r = current.r;
+    const L = { id: newId(), recu: iso(TODAY), statut: "a_faire", reponses: [],
+      r: { expediteur: r.expediteur, reference: r.reference || "", titre: r.titre, resume: r.resume, urgence: r.urgence, echeances: r.echeances || [], a_faire: r.a_faire || [], documents: r.documents || [], montant: r.montant || "", si_rien: r.si_rien || "", aide: r.aide || [] } };
+    letters.unshift(L); current.letterId = L.id; saveLetters();
+    return L.id;
+  }
+  const STAT = { a_faire: ["À faire", "u-moyenne"], repondu: ["Répondu", "u-info"], regle: ["Réglé ✓", "u-basse"] };
+  function renderLetters() {
+    const box = $("#letters"); if (!box) return;
+    const n = { a_faire: 0, repondu: 0, regle: 0 }; letters.forEach(l => n[l.statut]++);
+    const total = letters.length, pct = total ? Math.round(n.regle / total * 100) : 0;
+    $("#lettersCount").textContent = n.a_faire + n.repondu ? "(" + (n.a_faire + n.repondu) + ")" : "";
+    $("#lettersHead").innerHTML = total ? `
+      <div class="score"><div class="ring" style="--p:${pct}"><b>${n.regle}</b><small>réglée${n.regle > 1 ? "s" : ""}</small></div>
+      <p>${n.regle ? `<b>${n.regle} lettre${n.regle > 1 ? "s" : ""} réglée${n.regle > 1 ? "s" : ""}</b>. ` : ""}${n.a_faire ? `${n.a_faire} à faire. ` : ""}${n.repondu ? `${n.repondu} en attente de réponse.` : ""}${!n.a_faire && !n.repondu ? "Tout est en ordre. 🌿" : ""}</p></div>` : "";
+    if (!total) { box.innerHTML = `<p class="empty">Aucune lettre gardée. Après avoir scanné une lettre, appuie sur « 📁 Garder dans Mes lettres » pour suivre ce qu'il reste à faire.</p>`; return; }
+    const order = { a_faire: 0, repondu: 1, regle: 2 };
+    box.innerHTML = [...letters].sort((a, b) => order[a.statut] - order[b.statut] || b.recu.localeCompare(a.recu)).map(l => {
+      const next = (l.r.echeances || []).filter(e => daysFrom(e.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+      const [lab, cls] = STAT[l.statut];
+      return `<div class="lettre ${l.statut}">
+        <div class="res-head"><div><p><b>${esc(l.r.titre)}</b></p><p class="when">${esc(l.r.expediteur || "")} · reçue le ${dateFr(l.recu)}${l.r.reference ? " · réf. " + esc(l.r.reference) : ""}</p></div>
+        <span class="pill ${cls}">${lab}</span></div>
+        ${next && l.statut !== "regle" ? `<p class="when">Prochaine date : <b>${esc(next.quoi)}</b>, ${longDate(next.date)} · <span class="${daysFrom(next.date) <= 3 ? "soon" : ""}">${rel(next.date)}</span></p>` : ""}
+        ${l.reponses?.length ? `<p class="when">✉️ ${l.reponses.map(x => esc(x.label) + " (" + dateFr(x.date) + ")").join(" · ")}</p>` : ""}
+        <div class="row">
+          <button class="small" data-open="${l.id}" type="button">Revoir</button>
+          ${l.statut !== "regle" ? `<button class="small" data-reply="${l.id}" type="button">✉️ Répondre</button><button class="small primary" data-done="${l.id}" type="button">C'est réglé ✓</button>` : `<button class="small ghost" data-undo="${l.id}" type="button">Pas encore réglé</button>`}
+          <button class="small ghost" data-rm="${l.id}" type="button">Retirer</button>
+        </div></div>`;
+    }).join("");
+  }
+  function reopen(id, reply) {
+    const L = letters.find(x => x.id === id); if (!L) return;
+    tab("letter");
+    showResult(L.r, { saved: true, letterId: id });
+    if (reply) openComposer(); else $("#result").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  document.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-open],[data-reply],[data-done],[data-undo],[data-rm]"); if (!b || !b.closest("#letters")) return;
+    const id = b.dataset.open || b.dataset.reply || b.dataset.done || b.dataset.undo || b.dataset.rm;
+    const L = letters.find(x => x.id === id); if (!L) return;
+    if (b.dataset.open) return reopen(id, false);
+    if (b.dataset.reply) return reopen(id, true);
+    if (b.dataset.done) { L.statut = "regle"; L.regle = iso(TODAY); saveLetters(); cheer(true); return; }
+    if (b.dataset.undo) { L.statut = L.reponses?.length ? "repondu" : "a_faire"; saveLetters(); return; }
+    if (b.dataset.rm) {
+      if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Sûr ?"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Retirer"; } }, 3000); return; }
+      letters = letters.filter(x => x.id !== id); saveLetters();
+    }
+  });
+  const BRAVO = ["Bravo ! Une lettre de moins 🎉", "C'est réglé. Tu peux être fier·e de toi ✨", "Bien joué ! Une chose de moins dans la tête 🌿", "Et une de plus ! Tu avances 💪", "Super. Ça, c'est fait ✅"];
+  function cheer(big) {
+    const msg = big ? BRAVO[Math.floor(Math.random() * BRAVO.length)] : "Envoyée ! Une étape de faite ✉️";
+    document.querySelectorAll(".toast").forEach(x => x.remove());
+    const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; t.setAttribute("role", "status");
+    document.body.append(t); setTimeout(() => t.remove(), 3200);
+    if (!big || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const colors = ["#1f6f78", "#ffe066", "#f59e5b", "#6fcf97", "#5cc1c9", "#f87171"];
+    const layer = document.createElement("div"); layer.className = "confetti"; layer.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 90; i++) {
+      const p = document.createElement("i");
+      p.style.cssText = `left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${Math.random() * .35}s;animation-duration:${1.6 + Math.random() * 1.4}s;--x:${(Math.random() - .5) * 220}px;--r:${Math.random() * 900}deg;width:${6 + Math.random() * 6}px;height:${8 + Math.random() * 8}px;border-radius:${Math.random() > .6 ? "50%" : "2px"}`;
+      layer.append(p);
+    }
+    document.body.append(layer); setTimeout(() => layer.remove(), 3500);
+  }
+
   /* ---------- Exemple affiché au premier lancement ---------- */
   const EXAMPLE = {
     expediteur: "Ta mutuelle, service du médecin-conseil",
@@ -357,6 +637,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
   };
   showResult(EXAMPLE, { example: true });
   render();
+  renderLetters();
   notifyDue();
 
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

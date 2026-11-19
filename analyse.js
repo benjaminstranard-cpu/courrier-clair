@@ -174,7 +174,12 @@
       ? "Très peu de texte a été lu. Reprends une photo plus nette, à plat et bien éclairée."
       : !echeances.length && trouverDates(text, t0).length ? "J'ai vu des dates dans la lettre mais je n'ai pas compris à quoi elles servent : relis-les." : "";
 
+    /* Référence du dossier, pour la recopier dans la réponse. */
+    const refM = text.match(/(?:n[°o]\.?\s*(?:de\s+)?dossier|notre\s+r[ée]f(?:[ée]rence)?|r[ée]f[ée]rence|r[ée]f\.)\s*:?\s*([A-Z0-9][A-Z0-9\/\-.]{2,24})/i);
+    const reference = refM ? refM[1].replace(/[.\-\/]+$/, "") : "";
+
     return {
+      reference,
       expediteur, titre: genre.titre, resume: genre.resume, urgence, echeances,
       a_faire: genre.a_faire, documents: genre.documents || [], montant,
       si_rien: genre.si_rien, aide: genre.aide, doute

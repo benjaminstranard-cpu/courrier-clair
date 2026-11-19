@@ -137,3 +137,40 @@ a{color:var(--accent)}
 .settings summary{font-weight:700;cursor:pointer}
 .badge{font-size:12px;font-weight:700;border-radius:6px;padding:2px 7px;background:var(--soft);color:var(--accent)}
 .textbox{white-space:pre-wrap;font-size:13px;max-height:180px;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0 0}
+/* Répondre à la lettre */
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line);padding-top:14px}
+.composer{display:flex;flex-direction:column;gap:12px;border:2px solid var(--accent);border-radius:14px;padding:16px;background:var(--paper)}
+.lbl{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:700;color:var(--muted)}
+.lbl input,.lbl select,.lbl textarea{font-weight:400;color:var(--ink)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.fgrid .full{grid-column:1/-1}
+.me{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card);display:flex;flex-direction:column;gap:10px}
+textarea.letter{min-height:340px;font:15px/1.5 var(--f-body);white-space:pre-wrap;background:var(--card)}
+.tip{margin:0;font-size:14px;background:var(--soft);border-radius:10px;padding:10px 12px}
+#printArea{display:none}
+@media print{
+  html.print-letter body{background:#fff;color:#000;padding:0}
+  html.print-letter body > *:not(#printArea){display:none!important}
+  html.print-letter #printArea{display:block;white-space:pre-wrap;font:12pt/1.5 "Atkinson Hyperlegible",Arial,sans-serif;color:#000;padding:18mm 20mm}
+}
+/* Mes lettres */
+.lettres-panel{grid-column:1/-1}
+.lettre{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.lettre p{margin:0}
+.lettre.regle{opacity:.75}
+.lettre.a_faire{border-left:4px solid var(--due)}
+.lettre.repondu{border-left:4px solid var(--accent)}
+.lettre.regle{border-left:4px solid var(--ok)}
+.u-info{background:var(--soft);color:var(--accent)}
+.score{display:flex;align-items:center;gap:14px}
+.score p{margin:0}
+.ring{--p:0;width:78px;height:78px;border-radius:50%;flex:none;display:grid;place-content:center;text-align:center;
+  background:radial-gradient(closest-side,var(--card) 78%,transparent 80%),conic-gradient(var(--ok) calc(var(--p)*1%),var(--line) 0)}
+.ring b{font:800 24px/1 var(--f-display)}
+.ring small{font-size:11px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:3000;background:var(--accent);color:var(--accent-ink);font-weight:700;opacity:1;padding:14px 20px;border-radius:999px;box-shadow:0 10px 30px rgb(0 0 0/.25);width:max-content;max-width:calc(100vw - 32px);text-align:center}
+@media (prefers-reduced-motion: no-preference){.toast{animation:pop .35s ease-out}@keyframes pop{from{transform:translate(-50%,20px);opacity:0}}}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:2999;overflow:hidden}
+.confetti i{position:absolute;top:-20px;animation:fall linear forwards}
+@keyframes fall{to{transform:translate(var(--x),105vh) rotate(var(--r))}}
+@media (max-width:860px){.tabs button{font-size:14px;padding:11px 6px}}

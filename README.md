@@ -7,6 +7,8 @@ Photographie une lettre officielle (mutuelle, INAMI, SPF Finances, commune, CPAS
 - **Scan de la lettre** : une photo par page, jusqu'à 4 pages, ou le texte collé.
 - **Lecture gratuite sur le téléphone** : le texte est lu sur l'appareil (Tesseract.js). La photo n'est envoyée nulle part.
 - **Explication simple** : qui écrit, le genre de courrier (convocation, facture, rappel, décision, demande de documents, impôts, huissier…), l'urgence, les étapes, ce qui arrive si on ne fait rien, qui peut aider.
+- **Répondre à la lettre** : Courrier Clair écrit la réponse pour toi, déjà polie et bien présentée. Par exemple : confirmer un rendez-vous, demander une autre date, envoyer des documents, demander un délai ou une explication, contester une décision, demander à payer en plusieurs fois, dire qu'on a déjà payé. Tu peux la modifier, puis l'imprimer, la copier ou l'envoyer par e-mail.
+- **Mes lettres** : le suivi de tes lettres (à faire, répondu, réglé), avec un compteur, et une petite fête 🎉 chaque fois qu'une lettre est réglée.
 - **Agenda intégré** : vue du mois, liste « À venir », rappel 3 jours avant, ajout à la main.
 - **Google Agenda** : un lien par date pour l'y copier, et l'export de tout l'agenda en fichier `.ics`.
 - **Rappels** : une notification la veille et le jour même, quand on ouvre l'application.
