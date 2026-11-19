@@ -431,15 +431,15 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
           <button id="rMail" type="button">📧 E-mail</button>
           <button id="rSent" type="button">✅ Je l'ai envoyée</button>
         </div>
-        <details class="other" id="rOther"><summary>✍️ Finir la lettre dans une autre app (Signaplume…)</summary>
+        <details class="other" id="rOther"><summary>✍️ Signer la lettre dans Signaplume</summary>
           <ol class="steps-mini">
-            <li><button type="button" class="small primary" id="rShare">Envoyer le brouillon vers mon app</button> Choisis Signaplume (ou une autre app) dans la liste. Si elle n'apparaît pas, le brouillon est copié : ouvre ton app et colle-le.</li>
-            <li>Termine et signe ta lettre dans ton app, puis <b>copie le texte final</b>.</li>
-            <li>Reviens ici et colle-le :</li>
+            <li><button type="button" class="small primary" id="rShare">📄 Ouvrir la lettre dans Signaplume</button><br>Courrier Clair en fait un PDF. Dans le menu, choisis <b>Signaplume</b>. S'il n'y est pas, touche « Plus », ou choisis « Enregistrer dans Fichiers » puis ouvre le fichier dans Signaplume.</li>
+            <li>Dans Signaplume, <b>signe</b> la lettre, puis <b>Partager › Enregistrer dans Fichiers</b>.</li>
+            <li>Reviens ici et ajoute le PDF signé :</li>
           </ol>
-          <div class="row"><button type="button" class="small" id="rPaste">📋 Coller ma lettre finale</button>
-            <label class="btn small filebtn">📎 Ajouter le PDF signé<input type="file" id="rPdf" accept="application/pdf,image/*"></label></div>
-          <p class="note" id="rPdfInfo">Dans ton app, enregistre le PDF dans « Fichiers » (ou « Téléchargements »), puis choisis-le ici.</p>
+          <div class="row"><label class="btn small primary filebtn">📎 Ajouter le PDF signé<input type="file" id="rPdf" accept="application/pdf,image/*"></label>
+            <button type="button" class="small ghost" id="rPaste">📋 Coller un texte modifié</button></div>
+          <p class="note" id="rPdfInfo">Le PDF signé est gardé avec cette lettre, dans « Mes lettres ».</p>
           <p class="note">Courrier Clair garde ta lettre finale avec cette lettre dans « Mes lettres ».</p>
         </details>
         <p class="tip" id="rTip"></p>
@@ -456,13 +456,21 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     box.oninput = e => { if (e.target.id === "rText") edited = true; else if (e.target.closest(".fgrid, .me")) { edited = false; fill(); } };
     box.onchange = e => { if (e.target.id !== "rType" && e.target.closest("#rFields, .me")) { edited = false; fill(); } };
     $("#rShare").onclick = async () => {
-      const text = $("#rText").value;
-      try { await navigator.clipboard.writeText(text); } catch { }
+      const b = $("#rShare"); b.disabled = true; b.textContent = "📄 Je prépare le PDF…";
       try {
-        if (navigator.share) { await navigator.share({ title: "Ma lettre", text }); flash("Brouillon envoyé. Quand ta lettre est finie, copie-la et reviens ici."); }
-        else flash("Brouillon copié. Ouvre ton app, colle-le, puis reviens ici avec la lettre finale.");
-      } catch (e) { if (e?.name !== "AbortError") flash("Brouillon copié. Ouvre ton app et colle-le."); }
-      lsSet("courrier-clair-brouillon", { id: ensureLetter(), at: Date.now() });
+        const text = $("#rText").value;
+        const objet = ((text.match(/^Concerne : (.*)$/m) || [])[1] || "Lettre").replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "").slice(0, 40);
+        const file = new File([await letterPdf(text)], `${objet}_${iso(TODAY)}.pdf`, { type: "application/pdf" });
+        lsSet("courrier-clair-brouillon", { id: ensureLetter(), at: Date.now() });
+        if (navigator.canShare?.({ files: [file] })) {
+          try { await navigator.share({ files: [file], title: file.name }); } catch (e) { if (e?.name !== "AbortError") throw e; }
+        } else {
+          const url = URL.createObjectURL(file), a = document.createElement("a");
+          a.href = url; a.download = file.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+          flash("PDF téléchargé. Ouvre-le avec Signaplume, signe-le, puis reviens ici pour l'ajouter.");
+        }
+      } catch { flash("Je n'ai pas pu préparer le PDF. Vérifie ta connexion internet (nécessaire la première fois) et réessaie.", true); }
+      b.disabled = false; b.textContent = "📄 Ouvrir la lettre dans Signaplume";
     };
     $("#rPaste").onclick = async () => {
       let t = "";
@@ -519,8 +527,8 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     const b = lsGet("courrier-clair-brouillon", null);
     if (!b || Date.now() - b.at > 3 * 3600e3 || !$("#rOther")) return;
     $("#rOther").open = true;
-    $("#rPaste").scrollIntoView({ behavior: "smooth", block: "center" });
-    flash("Re-bonjour ! Ta lettre est finie ? Copie-la dans ton app, puis appuie sur « Coller ma lettre finale ».");
+    $("#rPdf").closest("label").scrollIntoView({ behavior: "smooth", block: "center" });
+    flash("Re-bonjour ! Ta lettre est signée ? Enregistre-la dans Fichiers depuis Signaplume, puis appuie sur « Ajouter le PDF signé ».");
     lsSet("courrier-clair-brouillon", null);
   });
   function fieldsFor(t, r, rdv, ech) {
@@ -618,6 +626,36 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       plan: "Propose un montant que tu peux vraiment payer chaque mois. Le CPAS peut t'aider gratuitement (médiation de dettes). " + base,
       docs: "Envoie des <b>copies</b>, jamais les originaux. " + base
     }[t] || base;
+  }
+  /* La lettre en PDF A4, pour la signer dans Signaplume. jsPDF est chargé seulement quand on en a besoin. */
+  let jsPdfLoading = null;
+  function loadJsPdf() {
+    if (window.jspdf) return Promise.resolve();
+    return jsPdfLoading ||= new Promise((ok, ko) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+      s.onload = ok; s.onerror = () => { jsPdfLoading = null; ko(new Error("jspdf")); };
+      document.head.append(s);
+    });
+  }
+  async function letterPdf(text) {
+    await loadJsPdf();
+    const doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+    const M = 22, W = 210 - 2 * M, LH = 5.6, bottom = 297 - 20;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+    let y = 25;
+    const clean = s => s.replace(/[\u{1F000}-\u{1FAFF}☀-➿️]/gu, "");
+    for (const para of clean(text).split("\n")) {
+      const lines = para.trim() ? doc.splitTextToSize(para, W) : [""];
+      for (const line of lines) {
+        if (y > bottom) { doc.addPage(); y = 25; }
+        if (/^Concerne :/.test(line)) { doc.setFont("helvetica", "bold"); doc.text(line, M, y); doc.setFont("helvetica", "normal"); }
+        else doc.text(line, M, y);
+        y += LH;
+      }
+    }
+    doc.setProperties({ title: (text.match(/^Concerne : (.*)$/m) || [])[1] || "Lettre", creator: "Courrier Clair" });
+    return doc.output("blob");
   }
   function printLetter(text) {
     let area = $("#printArea");
