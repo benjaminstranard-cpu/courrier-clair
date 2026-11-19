@@ -1,6 +1,6 @@
 /* Garde l'application disponible même sans internet. */
-const CACHE = "courrier-clair-v5";
-const FILES = ["./", "index.html", "style.css?v=5", "app.js?v=5", "analyse.js?v=5", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
+const CACHE = "courrier-clair-v6";
+const FILES = ["./", "index.html", "style.css?v=6", "app.js?v=6", "analyse.js?v=6", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener("fetch", e => {

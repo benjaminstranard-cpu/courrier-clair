@@ -437,7 +437,9 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
             <li>Termine et signe ta lettre dans ton app, puis <b>copie le texte final</b>.</li>
             <li>Reviens ici et colle-le :</li>
           </ol>
-          <div class="row"><button type="button" class="small" id="rPaste">📋 Coller ma lettre finale</button></div>
+          <div class="row"><button type="button" class="small" id="rPaste">📋 Coller ma lettre finale</button>
+            <label class="btn small filebtn">📎 Ajouter le PDF signé<input type="file" id="rPdf" accept="application/pdf,image/*"></label></div>
+          <p class="note" id="rPdfInfo">Dans ton app, enregistre le PDF dans « Fichiers » (ou « Téléchargements »), puis choisis-le ici.</p>
           <p class="note">Courrier Clair garde ta lettre finale avec cette lettre dans « Mes lettres ».</p>
         </details>
         <p class="tip" id="rTip"></p>
@@ -473,6 +475,21 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       flash("Ta lettre finale est revenue ✓ Tu peux l'imprimer, l'envoyer par e-mail ou la copier.");
       $("#rText").scrollIntoView({ behavior: "smooth", block: "center" });
     };
+    $("#rPdf").onchange = async e => {
+      const file = e.target.files[0]; e.target.value = "";
+      if (!file) return;
+      const id = ensureLetter();
+      if (!id) { flash("C'est la lettre d'exemple : scanne d'abord une vraie lettre pour y joindre ton PDF.", true); return; }
+      if (file.size > 25e6) { flash("Ce fichier est trop gros (plus de 25 Mo).", true); return; }
+      try {
+        await pdfPut(id, file);
+        const L = letters.find(x => x.id === id);
+        if (L) { L.pdf = { name: file.name, size: file.size, type: file.type }; saveLetters(); }
+        $("#rPdfInfo").innerHTML = `📄 <b>${esc(file.name)}</b> est gardé avec cette lettre ✓ Tu le retrouves dans « Mes lettres ».`;
+        flash("PDF reçu et gardé avec ta lettre ✓");
+      } catch { flash("Je n'ai pas pu garder ce fichier sur cet appareil (mode privé ?).", true); }
+    };
+    { const L = current.letterId && letters.find(x => x.id === current.letterId); if (L?.pdf) $("#rPdfInfo").innerHTML = `📄 <b>${esc(L.pdf.name)}</b> est déjà gardé avec cette lettre.`; }
     $("#rPrint").onclick = () => printLetter($("#rText").value);
     $("#rCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#rText").value); flash("Lettre copiée. Colle-la dans un e-mail ou un document."); } catch { $("#rText").select(); flash("Sélectionne le texte et copie-le."); } };
     $("#rMail").onclick = () => {
@@ -617,6 +634,35 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
   const LL = "courrier-clair-lettres";
   let letters = lsGet(LL, []);
   function saveLetters() { lsSet(LL, letters); renderLetters(); }
+  /* PDF signés : gardés sur l'appareil (IndexedDB), un par lettre. */
+  const idb = () => new Promise((ok, ko) => {
+    const rq = indexedDB.open("courrier-clair", 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore("pdfs");
+    rq.onsuccess = () => ok(rq.result); rq.onerror = () => ko(rq.error);
+  });
+  async function pdfOp(mode, fn) {
+    const db = await idb();
+    return new Promise((ok, ko) => { const tx = db.transaction("pdfs", mode); const rq = fn(tx.objectStore("pdfs")); tx.oncomplete = () => ok(rq?.result); tx.onerror = () => ko(tx.error); });
+  }
+  const pdfPut = (id, file) => pdfOp("readwrite", s => s.put({ name: file.name, type: file.type, blob: file }, id));
+  const pdfGet = id => pdfOp("readonly", s => s.get(id));
+  const pdfDel = id => pdfOp("readwrite", s => s.delete(id)).catch(() => { });
+  async function pdfOpen(id) {
+    const p = await pdfGet(id).catch(() => null);
+    if (!p) { flash("Je ne retrouve plus ce fichier sur cet appareil.", true); return; }
+    const url = URL.createObjectURL(new Blob([p.blob], { type: p.type || "application/pdf" }));
+    const w = window.open(url, "_blank");
+    if (!w) { const a = document.createElement("a"); a.href = url; a.download = p.name; document.body.append(a); a.click(); a.remove(); }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  async function pdfShare(id) {
+    const p = await pdfGet(id).catch(() => null);
+    if (!p) { flash("Je ne retrouve plus ce fichier sur cet appareil.", true); return; }
+    const f = new File([p.blob], p.name, { type: p.type || "application/pdf" });
+    if (navigator.canShare?.({ files: [f] })) { try { await navigator.share({ files: [f], title: p.name }); } catch { } }
+    else { pdfOpen(id); flash("Ton appareil ne peut pas partager directement : le PDF s'ouvre, utilise son bouton Partager ou Imprimer."); }
+  }
+
   /* La lettre d'exemple n'est jamais gardée dans Mes lettres. */
   function ensureLetter() { return current.opts.example ? null : (current.letterId || keepLetter()); }
   function keepLetter() {
@@ -646,6 +692,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
         <span class="pill ${cls}">${lab}</span></div>
         ${next && l.statut !== "regle" ? `<p class="when">Prochaine date : <b>${esc(next.quoi)}</b>, ${longDate(next.date)} · <span class="${daysFrom(next.date) <= 3 ? "soon" : ""}">${rel(next.date)}</span></p>` : ""}
         ${l.reponses?.length ? `<p class="when">✉️ ${l.reponses.map(x => esc(x.label) + " (" + dateFr(x.date) + ")").join(" · ")}</p>` : ""}
+        ${l.pdf ? `<div class="contact"><span>📄 ${esc(l.pdf.name)}</span><span class="row"><button class="small" data-pdf="${l.id}" type="button">Ouvrir</button><button class="small" data-pdfshare="${l.id}" type="button">📤 Partager</button></span></div>` : ""}
         <div class="row">
           <button class="small" data-open="${l.id}" type="button">Revoir</button>
           ${l.statut !== "regle" ? `<button class="small" data-reply="${l.id}" type="button">✉️ Répondre</button><button class="small primary" data-done="${l.id}" type="button">C'est réglé ✓</button>` : `<button class="small ghost" data-undo="${l.id}" type="button">Pas encore réglé</button>`}
@@ -660,7 +707,9 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     if (reply) openComposer(); else $("#result").scrollIntoView({ behavior: "smooth", block: "start" });
   }
   document.addEventListener("click", ev => {
-    const b = ev.target.closest("[data-open],[data-reply],[data-done],[data-undo],[data-rm]"); if (!b || !b.closest("#letters")) return;
+    const b = ev.target.closest("[data-open],[data-reply],[data-done],[data-undo],[data-rm],[data-pdf],[data-pdfshare]"); if (!b || !b.closest("#letters")) return;
+    if (b.dataset.pdf) return pdfOpen(b.dataset.pdf);
+    if (b.dataset.pdfshare) return pdfShare(b.dataset.pdfshare);
     const id = b.dataset.open || b.dataset.reply || b.dataset.done || b.dataset.undo || b.dataset.rm;
     const L = letters.find(x => x.id === id); if (!L) return;
     if (b.dataset.open) return reopen(id, false);
@@ -669,7 +718,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     if (b.dataset.undo) { L.statut = L.reponses?.length ? "repondu" : "a_faire"; saveLetters(); return; }
     if (b.dataset.rm) {
       if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Sûr ?"; setTimeout(() => { if (b.isConnected) { b.dataset.sure = ""; b.textContent = "Retirer"; } }, 3000); return; }
-      letters = letters.filter(x => x.id !== id); saveLetters();
+      letters = letters.filter(x => x.id !== id); saveLetters(); pdfDel(id);
     }
   });
   const BRAVO = ["Bravo ! Une lettre de moins 🎉", "C'est réglé. Tu peux être fier·e de toi ✨", "Bien joué ! Une chose de moins dans la tête 🌿", "Et une de plus ! Tu avances 💪", "Super. Ça, c'est fait ✅"];
