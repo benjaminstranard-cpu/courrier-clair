@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Courrier Clair</title>
+<meta name="description" content="Photographie une lettre officielle : tu comprends de quoi elle parle, ce que tu dois faire, et les dates vont dans ton agenda.">
+<meta name="theme-color" content="#1f6f78">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Courrier <em>Clair</em></h1>
+      <p class="tag">Photographie une lettre officielle. Tu sais en une minute de quoi elle parle, ce que tu dois faire, et les dates vont dans ton agenda.</p>
+    </div>
+    <div class="row">
+      <button id="notifBtn" class="ghost" hidden>Activer les rappels</button>
+      <button id="exportBtn" class="ghost" hidden>Exporter l'agenda (.ics)</button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabLetter" aria-selected="true">Ma lettre</button>
+    <button role="tab" id="tabCal" aria-selected="false">Mon agenda <span id="tabCount"></span></button>
+  </div>
+
+  <div class="grid">
+    <section class="panel" data-pane="letter" aria-labelledby="hLetter">
+      <h2 id="hLetter">1. Scanne ta lettre</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="image/*" multiple capture="environment">
+        <b>Prendre une photo ou choisir un fichier</b>
+        <small>Une photo par page, jusqu'à 4 pages. Pose la lettre à plat, bien éclairée, sans ombre.</small>
+      </label>
+      <div class="thumbs" id="thumbs"></div>
+      <details>
+        <summary>Ou colle le texte de la lettre</summary>
+        <textarea id="pasted" placeholder="Copie ici le texte d'un e-mail ou d'un PDF…"></textarea>
+      </details>
+      <div class="row">
+        <button class="primary" id="analyze">Expliquer ma lettre</button>
+      </div>
+      <div class="progress" id="progress" hidden><i></i></div>
+      <p class="note">Tout se passe sur ton téléphone : la photo n'est envoyée nulle part et n'est pas gardée. Seules les dates que tu ajoutes sont enregistrées, sur cet appareil.</p>
+      <div id="status" class="status" hidden></div>
+      <div id="result" class="result"></div>
+
+      <details class="settings" id="settings">
+        <summary>Explication détaillée avec Claude (optionnel, payant)</summary>
+        <p class="note">Sans réglage, Courrier Clair lit la lettre gratuitement sur ton téléphone et reconnaît les courriers les plus courants. Pour une explication sur mesure de n'importe quelle lettre, tu peux coller ta propre clé API Anthropic (console.anthropic.com). Chaque lettre coûte alors quelques centimes, payés par toi à Anthropic, et la photo est envoyée à Claude.</p>
+        <input type="password" id="apiKey" autocomplete="off" placeholder="sk-ant-…" aria-label="Clé API Anthropic">
+        <div class="row"><button class="small" id="saveKey">Enregistrer sur cet appareil</button><button class="small ghost" id="forgetKey">Effacer la clé</button></div>
+      </details>
+    </section>
+
+    <section class="panel" data-pane="cal" data-off aria-labelledby="calTitle">
+      <div class="cal-head">
+        <button class="small" id="prev" aria-label="Mois précédent">‹</button>
+        <h2 id="calTitle">Agenda</h2>
+        <div class="row"><button class="small" id="todayBtn">Aujourd'hui</button><button class="small" id="next" aria-label="Mois suivant">›</button></div>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Rendez-vous</span><span><i style="background:var(--due)"></i>Date limite</span><span><i style="background:var(--mark)"></i>Rappel</span></div>
+      <div class="block">
+        <h3 id="listTitle">À venir</h3>
+        <div class="list" id="list"></div>
+      </div>
+      <form class="add" id="addForm">
+        <h3 class="full">Ajouter à la main</h3>
+        <input class="t" id="fTitle" placeholder="Ex. : Psychiatre" required aria-label="Quoi">
+        <input type="date" id="fDate" required aria-label="Date">
+        <input type="time" id="fTime" aria-label="Heure">
+        <div class="row full">
+          <label class="check"><input type="radio" name="kind" value="rdv" checked> Rendez-vous</label>
+          <label class="check"><input type="radio" name="kind" value="echeance"> Date limite</label>
+          <button class="primary" type="submit" style="margin-left:auto">Ajouter</button>
+        </div>
+      </form>
+      <p class="note">Ton agenda est gardé sur cet appareil. Chaque date a un lien « Google Agenda » pour l'y copier.</p>
+    </section>
+  </div>
+
+  <p class="foot">Courrier Clair explique, il ne décide pas. L'explication peut se tromper : vérifie toujours auprès de l'organisme qui t'écrit. Aide gratuite : le service social de ta mutuelle, le CPAS de ta commune, ou un service d'aide juridique de première ligne.</p>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="analyse.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
