@@ -166,12 +166,12 @@
   /* ---------- Onglets (téléphone) ---------- */
   function tab(which) {
     $("#tabLetter").setAttribute("aria-selected", which === "letter");
-    $("#tabLetters").setAttribute("aria-selected", which === "lettres");
+    $("#tabLetters")?.setAttribute("aria-selected", which === "lettres");
     $("#tabCal").setAttribute("aria-selected", which === "cal");
     document.querySelectorAll("[data-pane]").forEach(p => p.toggleAttribute("data-off", p.dataset.pane !== which));
   }
   $("#tabLetter").onclick = () => tab("letter");
-  $("#tabLetters").onclick = () => tab("lettres");
+  if ($("#tabLetters")) $("#tabLetters").onclick = () => tab("lettres");
   $("#tabCal").onclick = () => tab("cal");
   tab("letter");
 
@@ -202,11 +202,27 @@
   const setProgress = p => { bar.hidden = p == null; barI.style.width = Math.round((p || 0) * 100) + "%"; };
 
   /* ---------- Lecture gratuite (sur l'appareil) ---------- */
+  /* Les photos de téléphone sont énormes : on les réduit avant de les lire, sinon le téléphone peut bloquer. */
+  async function reduire(file, max = 1800) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+      const ctx = c.getContext("2d");
+      ctx.filter = "grayscale(1) contrast(1.15)";
+      ctx.drawImage(bmp, 0, 0, c.width, c.height);
+      bmp.close?.();
+      return await new Promise(res => c.toBlob(b => res(b || file), "image/jpeg", 0.9));
+    } catch { return file; }
+  }
   async function lireImages(imgs) {
     if (!window.Tesseract) throw new Error("ocr_absent");
     let texte = "";
     for (let i = 0; i < imgs.length; i++) {
-      const { data } = await Tesseract.recognize(imgs[i], "fra", {
+      status.textContent = `Je prépare la page ${i + 1}…`;
+      const img = await reduire(imgs[i]);
+      const { data } = await Tesseract.recognize(img, "fra", {
         logger: m => {
           if (m.status === "recognizing text") { setProgress((i + m.progress) / imgs.length); status.textContent = `Je lis la page ${i + 1} sur ${imgs.length}…`; }
           else if (/loading|initializ/.test(m.status) && i === 0) status.textContent = "Je prépare la lecture (la première fois, ça prend un peu plus de temps)…";
