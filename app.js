@@ -855,5 +855,13 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
   renderLetters();
   notifyDue();
 
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  /* Mises à jour : on vérifie à chaque ouverture, et on recharge une fois quand une nouvelle version est prête. */
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    let reloaded = !navigator.serviceWorker.controller; // première visite : rien à recharger
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(reg => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+    }).catch(() => {});
+  }
 })();
