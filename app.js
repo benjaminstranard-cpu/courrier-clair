@@ -431,6 +431,15 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
           <button id="rMail" type="button">📧 E-mail</button>
           <button id="rSent" type="button">✅ Je l'ai envoyée</button>
         </div>
+        <details class="other" id="rOther"><summary>✍️ Finir la lettre dans une autre app (Signaplume…)</summary>
+          <ol class="steps-mini">
+            <li><button type="button" class="small primary" id="rShare">Envoyer le brouillon vers mon app</button> Choisis Signaplume (ou une autre app) dans la liste. Si elle n'apparaît pas, le brouillon est copié : ouvre ton app et colle-le.</li>
+            <li>Termine et signe ta lettre dans ton app, puis <b>copie le texte final</b>.</li>
+            <li>Reviens ici et colle-le :</li>
+          </ol>
+          <div class="row"><button type="button" class="small" id="rPaste">📋 Coller ma lettre finale</button></div>
+          <p class="note">Courrier Clair garde ta lettre finale avec cette lettre dans « Mes lettres ».</p>
+        </details>
         <p class="tip" id="rTip"></p>
       </div>`;
     let edited = false;
@@ -444,6 +453,26 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     $("#rType").onchange = () => { edited = false; $("#rFields").innerHTML = fieldsFor($("#rType").value, r, rdv, ech); fill(); };
     box.oninput = e => { if (e.target.id === "rText") edited = true; else if (e.target.closest(".fgrid, .me")) { edited = false; fill(); } };
     box.onchange = e => { if (e.target.id !== "rType" && e.target.closest("#rFields, .me")) { edited = false; fill(); } };
+    $("#rShare").onclick = async () => {
+      const text = $("#rText").value;
+      try { await navigator.clipboard.writeText(text); } catch { }
+      try {
+        if (navigator.share) { await navigator.share({ title: "Ma lettre", text }); flash("Brouillon envoyé. Quand ta lettre est finie, copie-la et reviens ici."); }
+        else flash("Brouillon copié. Ouvre ton app, colle-le, puis reviens ici avec la lettre finale.");
+      } catch (e) { if (e?.name !== "AbortError") flash("Brouillon copié. Ouvre ton app et colle-le."); }
+      lsSet("courrier-clair-brouillon", { id: ensureLetter(), at: Date.now() });
+    };
+    $("#rPaste").onclick = async () => {
+      let t = "";
+      try { t = await navigator.clipboard.readText(); } catch { }
+      if (!t.trim()) { flash("Je ne trouve rien à coller. Copie d'abord ta lettre finale dans ton app, puis réessaie (ou colle-la directement dans la grande case).", true); $("#rText").focus(); return; }
+      $("#rText").value = t; edited = true;
+      const id = ensureLetter(), L = letters.find(x => x.id === id);
+      if (L) { L.finale = t; saveLetters(); }
+      $("#rOther").open = false;
+      flash("Ta lettre finale est revenue ✓ Tu peux l'imprimer, l'envoyer par e-mail ou la copier.");
+      $("#rText").scrollIntoView({ behavior: "smooth", block: "center" });
+    };
     $("#rPrint").onclick = () => printLetter($("#rText").value);
     $("#rCopy").onclick = async () => { try { await navigator.clipboard.writeText($("#rText").value); flash("Lettre copiée. Colle-la dans un e-mail ou un document."); } catch { $("#rText").select(); flash("Sélectionne le texte et copie-le."); } };
     $("#rMail").onclick = () => {
@@ -453,18 +482,30 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       location.href = "mailto:" + encodeURIComponent(to).replace("%40", "@") + "?subject=" + encodeURIComponent(subj) + "&body=" + encodeURIComponent(body);
     };
     $("#rSent").onclick = () => {
-      const id = current.letterId || keepLetter();
+      const id = ensureLetter();
       const L = letters.find(x => x.id === id);
       if (L) { L.reponses = [...(L.reponses || []), { type: $("#rType").value, label: REPLIES[$("#rType").value], date: iso(TODAY) }]; if (L.statut === "a_faire") L.statut = "repondu"; saveLetters(); }
-      $("#rSent").outerHTML = `<span class="added">Notée dans Mes lettres ✓</span>`;
+      $("#rSent").outerHTML = `<span class="added">${id ? "Notée dans Mes lettres ✓" : "C'est l'exemple : rien n'est gardé"}</span>`;
       flash("Bien joué ! C'est noté dans Mes lettres. Quand tout est réglé, coche « C'est réglé ».");
       cheer(false);
     };
     fill();
+    const saved = current.letterId && letters.find(x => x.id === current.letterId)?.finale;
+    if (saved) { $("#rText").value = saved; edited = true; }
     box.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const hFr = h => h.replace(/^0(\d)/, "$1").replace(":", "h");
+  /* Retour depuis l'autre app : on rappelle de coller la lettre finale. */
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    const b = lsGet("courrier-clair-brouillon", null);
+    if (!b || Date.now() - b.at > 3 * 3600e3 || !$("#rOther")) return;
+    $("#rOther").open = true;
+    $("#rPaste").scrollIntoView({ behavior: "smooth", block: "center" });
+    flash("Re-bonjour ! Ta lettre est finie ? Copie-la dans ton app, puis appuie sur « Coller ma lettre finale ».");
+    lsSet("courrier-clair-brouillon", null);
+  });
   function fieldsFor(t, r, rdv, ech) {
     const f = (id, label, html) => `<label class="lbl">${label}${html.replace("<X", `<input id="${id}"`)}</label>`;
     const common = f("fDest", "À qui", `<X value="${esc(cap((r.expediteur || "").replace(/^(Ta|Ton|Le|La|Un|Une) |^L'/, "")))}">`) +
@@ -576,6 +617,8 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
   const LL = "courrier-clair-lettres";
   let letters = lsGet(LL, []);
   function saveLetters() { lsSet(LL, letters); renderLetters(); }
+  /* La lettre d'exemple n'est jamais gardée dans Mes lettres. */
+  function ensureLetter() { return current.opts.example ? null : (current.letterId || keepLetter()); }
   function keepLetter() {
     if (current.letterId) return current.letterId;
     const r = current.r;
