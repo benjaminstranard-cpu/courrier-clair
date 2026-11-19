@@ -188,6 +188,10 @@
       b.onclick = () => { files.splice(i, 1); renderThumbs(); };
       fig.append(img, b); t.append(fig);
     });
+    drop.querySelector("b").textContent = files.length ? "Ajouter une autre page" : "Prendre ma lettre en photo";
+    drop.classList.toggle("has", files.length > 0);
+    updateGo();
+    if (files.length) $("#analyze").scrollIntoView({ behavior: "smooth", block: "center" });
   }
   $("#file").addEventListener("change", e => { addFiles(e.target.files); e.target.value = ""; });
   drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
@@ -282,18 +286,21 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     const dates = (Array.isArray(r.echeances) ? r.echeances : []).filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e?.date || ""));
     const list = (a, tag) => Array.isArray(a) && a.length ? `<${tag}>${a.map(x => `<li>${esc(x)}</li>`).join("")}</${tag}>` : "";
     const el = $("#result");
+    const contacts = (r.emails?.length || r.telephones?.length) ? `<div class="block"><h3>Pour les contacter</h3><div class="contacts">
+        ${(r.emails || []).map(m => `<div class="contact"><span>📧 <a href="mailto:${esc(m)}">${esc(m)}</a></span><button class="small" type="button" data-copy="${esc(m)}">Copier</button></div>`).join("")}
+        ${(r.telephones || []).map(t => `<div class="contact"><span>📞 <a href="tel:${esc(t.replace(/\s/g, ""))}">${esc(t)}</a></span><button class="small" type="button" data-copy="${esc(t)}">Copier</button></div>`).join("")}
+        </div><p class="note">Trouvé sur la lettre. Vérifie que c'est bien écrit pareil sur le papier.</p></div>` : "";
     el.innerHTML = `
+      <button type="button" class="link back" id="again">${opts.example ? "✕ Fermer l'exemple" : "← Scanner une autre lettre"}</button>
       <div class="res-head"><div>
-        ${opts.example ? `<span class="example">Exemple : lettre fictive</span>` : `<span class="badge">${opts.claude ? "Expliqué par Claude" : "Lecture gratuite"}</span>`}
+        ${opts.example ? `<span class="example">Exemple : lettre inventée</span>` : ""}
         <h2 style="margin-top:6px">${esc(r.titre || "Ta lettre")}</h2>
         <p class="from">${esc(r.expediteur || "")}</p></div>
         <span class="pill u-${u}">${uLabel}</span></div>
       <p class="summary">${esc(r.resume || "")}</p>
       ${r.montant ? `<p><b>Montant :</b> ${esc(r.montant)}</p>` : ""}
-      ${(r.emails?.length || r.telephones?.length) ? `<div class="block"><h3>Pour les contacter</h3><div class="contacts">
-        ${(r.emails || []).map(m => `<div class="contact"><span>📧 <a href="mailto:${esc(m)}">${esc(m)}</a></span><button class="small" type="button" data-copy="${esc(m)}">Copier</button></div>`).join("")}
-        ${(r.telephones || []).map(t => `<div class="contact"><span>📞 <a href="tel:${esc(t.replace(/\s/g, ""))}">${esc(t)}</a></span><button class="small" type="button" data-copy="${esc(t)}">Copier</button></div>`).join("")}
-        </div><p class="note">Trouvé sur la lettre. Vérifie que c'est bien écrit pareil sur le papier.</p></div>` : ""}
+      ${r.a_faire?.length ? `<div class="block"><h3>Ce que tu dois faire</h3>${list(r.a_faire, "ol")}</div>` : ""}
+      ${r.si_rien ? `<p class="warn"><b>Si tu ne fais rien :</b> ${esc(r.si_rien)}</p>` : ""}
       ${dates.length ? `<div class="block"><h3>Les dates</h3><div class="dates">${dates.map((d, i) => {
         const dt = parseISO(d.date);
         return `<div class="date"><div class="d"><b>${dt.getDate()}</b><span>${MON3[dt.getMonth()]}</span></div>
@@ -302,18 +309,22 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
         <div class="row"><button class="primary" id="addAll">Tout mettre dans mon agenda</button>
         <label class="check"><input type="checkbox" id="remind" checked> Me rappeler 3 jours avant</label></div></div>` :
         (opts.example ? "" : `<p class="note">Aucune date à venir trouvée. Si la lettre en contient une, ajoute-la à la main dans l'agenda.</p>`)}
-      ${r.a_faire?.length ? `<div class="block"><h3>Ce que tu dois faire</h3>${list(r.a_faire, "ol")}</div>` : ""}
-      ${r.documents?.length ? `<div class="block"><h3>À préparer</h3>${list(r.documents, "ul")}</div>` : ""}
-      ${r.si_rien ? `<p class="warn"><b>Si tu ne fais rien :</b> ${esc(r.si_rien)}</p>` : ""}
-      ${r.aide?.length ? `<div class="block"><h3>Qui peut t'aider</h3>${list(r.aide, "ul")}</div>` : ""}
       ${r.doute ? `<p class="note"><b>Pas sûr :</b> ${esc(r.doute)}</p>` : ""}
       <div class="actions">
-        <button class="primary" id="replyBtn" type="button">✉️ Répondre à cette lettre</button>
-        ${opts.example ? "" : opts.saved ? `<span class="added">Dans Mes lettres ✓</span>` : `<button id="keepBtn" type="button">📁 Garder dans Mes lettres</button>`}
+        <h3>Et maintenant ?</h3>
+        <button class="primary big" id="replyBtn" type="button">✉️ Répondre à cette lettre</button>
+        ${opts.example ? "" : `<p class="added">📁 Gardée dans « Mes lettres » ✓</p>`}
       </div>
       <div id="composer"></div>
-      ${opts.texte ? `<details><summary>Voir le texte lu sur la photo</summary><p class="textbox">${esc(opts.texte.trim())}</p></details>` : ""}
-      <p class="note">Vérifie toujours auprès de l'organisme qui t'a écrit.</p>`;
+      ${(r.documents?.length || r.aide?.length || contacts || opts.texte) ? `<details class="more"><summary>Plus d'infos : à préparer, qui peut t'aider, contacts</summary>
+        ${r.documents?.length ? `<div class="block"><h3>À préparer</h3>${list(r.documents, "ul")}</div>` : ""}
+        ${r.aide?.length ? `<div class="block"><h3>Qui peut t'aider</h3>${list(r.aide, "ul")}</div>` : ""}
+        ${contacts}
+        ${opts.texte ? `<details><summary>Voir le texte lu sur la photo</summary><p class="textbox">${esc(opts.texte.trim())}</p></details>` : ""}
+      </details>` : ""}
+      <p class="note">Courrier Clair explique, il ne décide pas. Vérifie toujours auprès de l'organisme qui t'a écrit.</p>`;
+    $("#start").hidden = true;
+    $("#again").onclick = () => resetScan();
     const from = r.expediteur || "";
     function addOne(i, btn) {
       const d = dates[i];
@@ -327,8 +338,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copié ✓"; } catch { flash(b.dataset.copy); }
     });
     $("#replyBtn").onclick = () => openComposer();
-    const kb = $("#keepBtn");
-    if (kb) kb.onclick = () => { keepLetter(); kb.outerHTML = `<span class="added">Dans Mes lettres ✓</span>`; flash("Gardée dans Mes lettres."); };
+    if (!opts.example && !opts.letterId) keepLetter();
     el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => addOne(+b.dataset.add, b));
     const all = $("#addAll");
     if (all) all.onclick = () => {
@@ -339,6 +349,17 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       flash("C'est dans ton agenda.");
     };
   }
+
+  /* Écran de départ : un seul bouton, « Expliquer » apparaît quand il y a une photo ou un texte. */
+  function updateGo() { $("#analyze").hidden = !files.length && !$("#pasted").value.trim(); }
+  function resetScan() {
+    files = []; renderThumbs(); $("#pasted").value = ""; $("#pasted").hidden = true;
+    $("#result").innerHTML = ""; $("#start").hidden = false; updateGo();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  $("#pasted").addEventListener("input", updateGo);
+  $("#showPaste").onclick = () => { const p = $("#pasted"); p.hidden = !p.hidden; if (!p.hidden) p.focus(); };
+  $("#showExample").onclick = () => { showResult(EXAMPLE, { example: true }); $("#result").scrollIntoView({ behavior: "smooth", block: "start" }); };
 
   $("#analyze").onclick = async () => {
     const text = $("#pasted").value.trim();
@@ -408,10 +429,15 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     const others = Object.keys(REPLIES).filter(k => !sug.includes(k));
     box.innerHTML = `
       <div class="composer">
-        <h3>Ta réponse</h3>
-        <label class="lbl">Ce que tu veux dire
-          <select id="rType">${sug.concat(others).map((k, i) => `${i === sug.length ? `<option disabled>──────────</option>` : ""}<option value="${k}" ${k === type ? "selected" : ""}>${REPLIES[k]}</option>`).join("")}</select>
-        </label>
+        <h3 class="step-h"><span>1</span> Que veux-tu répondre ?</h3>
+        <input type="hidden" id="rType" value="${type}">
+        <div class="choices" role="radiogroup" aria-label="Que veux-tu répondre ?">
+          ${sug.map(k => `<button type="button" class="choice" role="radio" data-type="${k}" aria-checked="${k === type}">${REPLIES[k]}</button>`).join("")}
+        </div>
+        <details class="more-choices" ${sug.includes(type) ? "" : "open"}><summary>Autre réponse…</summary><div class="choices">
+          ${others.map(k => `<button type="button" class="choice" role="radio" data-type="${k}" aria-checked="${k === type}">${REPLIES[k]}</button>`).join("")}
+        </div></details>
+        <h3 class="step-h"><span>2</span> Vérifie les détails</h3>
         <div class="fgrid" id="rFields">${fieldsFor(type, r, rdv, ech)}</div>
         <details class="me" ${me.nom ? "" : "open"}><summary>Mes coordonnées ${me.nom ? `(${esc(me.nom)})` : "(à remplir une fois)"}</summary>
           <div class="fgrid">
@@ -424,12 +450,17 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
           </div>
           <p class="note">Gardé seulement sur cet appareil, pour tes prochaines réponses.</p>
         </details>
-        <label class="lbl">La lettre (tu peux la modifier)<textarea id="rText" class="letter" spellcheck="true"></textarea></label>
-        <div class="row">
+        <h3 class="step-h"><span>3</span> Ta lettre est prête</h3>
+        <label class="lbl">Tu peux encore la modifier<textarea id="rText" class="letter" spellcheck="true"></textarea></label>
+        <p class="tip" id="rTip"></p>
+        <div class="send">
           <button class="primary" id="rPrint" type="button">🖨️ Imprimer</button>
-          <button id="rCopy" type="button">📋 Copier</button>
-          <button id="rMail" type="button">📧 E-mail</button>
-          <button id="rSent" type="button">✅ Je l'ai envoyée</button>
+          <button class="primary" id="rMail" type="button">📧 Envoyer par e-mail</button>
+          <button id="rSign" type="button">✍️ Signer dans Signaplume</button>
+        </div>
+        <div class="row">
+          <button class="small ghost" id="rCopy" type="button">📋 Copier le texte</button>
+          <button class="small" id="rSent" type="button">✅ Je l'ai envoyée</button>
         </div>
         <details class="other" id="rOther"><summary>✍️ Signer la lettre dans Signaplume</summary>
           <ol class="steps-mini">
@@ -440,9 +471,7 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
           <div class="row"><label class="btn small primary filebtn">📎 Ajouter le PDF signé<input type="file" id="rPdf" accept="application/pdf,image/*"></label>
             <button type="button" class="small ghost" id="rPaste">📋 Coller un texte modifié</button></div>
           <p class="note" id="rPdfInfo">Le PDF signé est gardé avec cette lettre, dans « Mes lettres ».</p>
-          <p class="note">Courrier Clair garde ta lettre finale avec cette lettre dans « Mes lettres ».</p>
         </details>
-        <p class="tip" id="rTip"></p>
       </div>`;
     let edited = false;
     const fill = () => {
@@ -452,7 +481,13 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
       if (!edited) $("#rText").value = letterText(t, readFields(), me2, r);
       $("#rTip").innerHTML = tipFor(t);
     };
-    $("#rType").onchange = () => { edited = false; $("#rFields").innerHTML = fieldsFor($("#rType").value, r, rdv, ech); fill(); };
+    const setType = t => {
+      $("#rType").value = t;
+      box.querySelectorAll(".choice").forEach(c => c.setAttribute("aria-checked", String(c.dataset.type === t)));
+      edited = false; $("#rFields").innerHTML = fieldsFor(t, r, rdv, ech); fill();
+    };
+    box.querySelectorAll(".choice").forEach(c => c.onclick = () => setType(c.dataset.type));
+    $("#rSign").onclick = () => { const o = $("#rOther"); o.open = true; o.scrollIntoView({ behavior: "smooth", block: "start" }); };
     box.oninput = e => { if (e.target.id === "rText") edited = true; else if (e.target.closest(".fgrid, .me")) { edited = false; fill(); } };
     box.onchange = e => { if (e.target.id !== "rType" && e.target.closest("#rFields, .me")) { edited = false; fill(); } };
     $("#rShare").onclick = async () => {
@@ -816,7 +851,6 @@ Réponds UNIQUEMENT avec ce JSON, sans texte autour :
     si_rien: "Si tu ne vas pas au rendez-vous sans prévenir, tes indemnités peuvent être suspendues.",
     aide: ["Le service social de ta mutuelle", "Ton médecin traitant"]
   };
-  showResult(EXAMPLE, { example: true });
   render();
   renderLetters();
   notifyDue();
